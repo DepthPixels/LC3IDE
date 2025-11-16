@@ -1,4 +1,4 @@
-import sys, os, subprocess
+import sys, os, subprocess, platform
 import qtawesome as qta
 
 from PySide6.QtCore import QSize, Qt, QVariantAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent
@@ -593,7 +593,10 @@ class MainWindow(QMainWindow):
                 )
                 
                 process.stdin.write("cd LC3Assembler\n")
-                process.stdin.write(f"py main.py {file_path}\n")
+                if platform.system() == "Windows":
+                    process.stdin.write(f"py main.py {file_path}\n")
+                else:
+                    process.stdin.write(f"python3 main.py {file_path}\n")
                 stdout_data, stderr_data = process.communicate()
                 process.stdin.close()
                 
