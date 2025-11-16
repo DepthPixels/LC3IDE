@@ -1,10 +1,32 @@
-import sys
-from PySide6.QtCore import QSize, Qt, QVariantAnimation, QEasingCurve, QSequentialAnimationGroup
+import sys, os, subprocess
+import qtawesome as qta
+
+from PySide6.QtCore import QSize, Qt, QVariantAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QPushButton, 
                                QPlainTextEdit, QDockWidget, QVBoxLayout, QHBoxLayout,
-                               QTabWidget, QTabBar, QTextEdit)
+                               QTabWidget, QTabBar, QTextEdit, QFileDialog, QMessageBox)
 from PySide6.QtGui import QColor, QPainter, QTextFormat, QAction
-import qtawesome as qta
+
+
+def update_assembler():
+    assembler_path = os.path.join(os.getcwd(), 'LC3Assembler')
+    process = subprocess.Popen(
+            "cmd.exe",
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            shell=False
+        )
+    if os.path.isdir(assembler_path):
+        process.stdin.write("cd LC3Assembler\n")
+        process.stdin.write("git pull\n")
+        stdout_data, stderr_data = process.communicate()
+    else:
+        process.stdin.write("git clone https://github.com/DepthPixels/LC3Assembler.git\n")
+        stdout_data, stderr_data = process.communicate()
+        
+    process.stdin.close()
 
 
 class LineNumberArea(QWidget):
@@ -88,6 +110,37 @@ class CodeEditor(QPlainTextEdit):
         self.setExtraSelections(extra_selections)
 
 
+class CustomTabBar(QTabBar):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMouseTracking(True)
+        self.hovered_tab = -1
+    
+    def mouseMoveEvent(self, event):
+        new_hovered = self.tabAt(event.pos())
+        if new_hovered != self.hovered_tab:
+            old_hovered = self.hovered_tab
+            self.hovered_tab = new_hovered
+            
+            # Update both old and new hovered tabs
+            main_window = self.window()
+            if hasattr(main_window, 'update_tab_button_state'):
+                if old_hovered >= 0:
+                    main_window.update_tab_button_state(old_hovered, False)
+                if new_hovered >= 0:
+                    main_window.update_tab_button_state(new_hovered, True)
+        super().mouseMoveEvent(event)
+    
+    def leaveEvent(self, event):
+        if self.hovered_tab >= 0:
+            old_hovered = self.hovered_tab
+            self.hovered_tab = -1
+            main_window = self.window()
+            if hasattr(main_window, 'update_tab_button_state'):
+                main_window.update_tab_button_state(old_hovered, False)
+        super().leaveEvent(event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -98,11 +151,30 @@ class MainWindow(QMainWindow):
         
         # Variables
         self.tab_modified = {}
+        self.tab_file_paths = {}
         
-        # Create tab widget
+        # Keyboard Shortcuts
+        save_shortcut = QAction("Save", self)
+        save_shortcut.setShortcut("Ctrl+S")
+        save_shortcut.triggered.connect(self.save_file)
+        self.addAction(save_shortcut)
+        
+        save_as_shortcut = QAction("Save As", self)
+        save_as_shortcut.setShortcut("Ctrl+Shift+S")
+        save_as_shortcut.triggered.connect(self.save_file_as)
+        self.addAction(save_as_shortcut)
+        
+        open_shortcut = QAction("Open", self)
+        open_shortcut.setShortcut("Ctrl+O")
+        open_shortcut.triggered.connect(self.open_file)
+        self.addAction(open_shortcut)
+        
+        # Create tab widget with custom tab bar
         self.tabs = QTabWidget()
-        self.tabs.setTabsClosable(True)
-        self.tabs.tabCloseRequested.connect(self.close_tab)
+        custom_tab_bar = CustomTabBar(self.tabs)
+        self.tabs.setTabBar(custom_tab_bar)
+        self.tabs.setTabsClosable(False)  # We handle close buttons manually
+        
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
                 border: none;
@@ -122,9 +194,6 @@ class MainWindow(QMainWindow):
                 background-color: #1a1a1a;
             }
         """)
-
-        # Get the tab bar and create custom corner widget
-        tab_bar = self.tabs.tabBar()
 
         # Create corner widget with buttons
         corner_widget = QWidget()
@@ -151,14 +220,14 @@ class MainWindow(QMainWindow):
         """)
         corner_layout.addWidget(self.add_tab_button)
 
-        # Run button
-        self.run_button = QPushButton()
-        self.run_button.setIcon(qta.icon("fa5s.play", color="#80CBC4"))
-        self.run_button.setIconSize(QSize(14, 14))
-        self.run_button.setFixedSize(QSize(28, 28))
-        self.run_button.setFlat(True)
-        self.run_button.clicked.connect(self.run_code)
-        self.run_button.setStyleSheet("""
+        # assemble button
+        self.assemble_button = QPushButton()
+        self.assemble_button.setIcon(qta.icon("fa5s.play", color="#80CBC4"))
+        self.assemble_button.setIconSize(QSize(14, 14))
+        self.assemble_button.setFixedSize(QSize(28, 28))
+        self.assemble_button.setFlat(True)
+        self.assemble_button.clicked.connect(self.assemble_code)
+        self.assemble_button.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
                 border: none;
@@ -168,7 +237,7 @@ class MainWindow(QMainWindow):
                 background-color: #1a1a1a;
             }
         """)
-        corner_layout.addWidget(self.run_button)
+        corner_layout.addWidget(self.assemble_button)
 
         # Stop button
         self.stop_button = QPushButton()
@@ -208,6 +277,7 @@ class MainWindow(QMainWindow):
         self.files_button.setIconSize(QSize(20, 20))
         self.files_button.setFixedSize(QSize(40, 40))
         self.files_button.setFlat(True)
+        self.files_button.clicked.connect(self.open_file)
         self.files_button.enterEvent = self.enterDockIcon
         self.files_button.leaveEvent = self.leaveDockIcon
         self.files_button.setStyleSheet("""
@@ -236,7 +306,6 @@ class MainWindow(QMainWindow):
         self.bounce_group.addAnimation(self.contract_anim)
         
         # Dock Code
-        
         dock = QDockWidget("Dock", self)
         dock.setTitleBarWidget(QWidget())
         dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | 
@@ -283,35 +352,41 @@ class MainWindow(QMainWindow):
         self.expand_anim.start()
         
         
-        
-        
     # Tab Bar Functions
-    def add_new_tab(self, title="Untitled"):
+    def add_new_tab(self, title="Untitled", file_path=None, content=""):
         editor = CodeEditor()
         editor.setPlaceholderText("Write your LC-3 code here...")
         editor.setStyleSheet("""
             QPlainTextEdit {
                 background-color: #0e0e0e;
-                color: white;
+                color: #d4d4d4;
                 border: none;
                 selection-background-color: #264f78;
             }
         """)
         
-        # Connect text change to track modifications
-        editor.textChanged.connect(lambda: self.mark_tab_modified(self.tabs.indexOf(editor)))
+        # Set content if opening file
+        if content:
+            editor.setPlainText(content)
         
         index = self.tabs.addTab(editor, title)
         self.tab_modified[index] = False
+        self.tab_file_paths[index] = file_path
+        
+        # Connect text change AFTER adding tab
+        editor.textChanged.connect(lambda: self.mark_tab_modified(self.tabs.indexOf(editor)))
         
         # Create close/dot button
         close_btn = QPushButton()
-        close_btn.setIcon(qta.icon("fa5s.circle", color="#858585"))  # Dot icon initially
-        close_btn.setIconSize(QSize(10, 10))
+        close_btn.setIcon(qta.icon("fa6s.circle", color="#d4d4d4"))
+        close_btn.setIconSize(QSize(8, 8))
         close_btn.setFixedSize(QSize(16, 16))
         close_btn.setFlat(True)
-        close_btn.setVisible(False)  # Hidden initially
-        close_btn.clicked.connect(lambda: self.close_tab(index))
+        close_btn.setVisible(False)
+        
+        # Important: Use a lambda that captures the current index
+        close_btn.clicked.connect(lambda checked=False, idx=index: self.close_tab(idx))
+        
         close_btn.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
@@ -323,101 +398,218 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Store button reference
-        close_btn.setProperty("tab_index", index)
-        
         self.tabs.tabBar().setTabButton(index, QTabBar.ButtonPosition.RightSide, close_btn)
         self.tabs.setCurrentWidget(editor)
-        
-        # Add hover events to tab
-        tab_bar = self.tabs.tabBar()
-        original_event = tab_bar.event
-        
-        def custom_event(event):
-            if event.type() == event.Type.HoverEnter:
-                self.update_tab_button_on_hover(index, True)
-            elif event.type() == event.Type.HoverLeave:
-                self.update_tab_button_on_hover(index, False)
-            return original_event(event)
-        
-        tab_bar.event = custom_event
-        tab_bar.setMouseTracking(True)
+    
+    
+    
+    def update_tab_button_state(self, index, is_hovering):
+        if index < 0 or index >= self.tabs.count():
+            return
             
-            
+        button = self.tabs.tabBar().tabButton(index, QTabBar.ButtonPosition.RightSide)
+        if not button:
+            return
+        
+        is_modified = self.tab_modified.get(index, False)
+        
+        if is_hovering:
+            # Show X on hover
+            button.setIcon(qta.icon("fa6s.x", color="#858585"))
+            button.setIconSize(QSize(10, 10))
+            button.setVisible(True)
+        elif is_modified:
+            # Show white dot when modified
+            button.setIcon(qta.icon("fa6s.circle", color="#d4d4d4"))
+            button.setIconSize(QSize(8, 8))
+            button.setVisible(True)
+        else:
+            # Hide when clean and not hovering
+            button.setVisible(False)
+
     
     def mark_tab_modified(self, index):
-        if index >= 0 and not self.tab_modified.get(index, False):
+        if index >= 0:
+            old_state = self.tab_modified.get(index, False)
             self.tab_modified[index] = True
-            self.update_tab_button(index)
+            # Update button even if already modified (for first text change)
+            if not old_state:
+                tab_bar = self.tabs.tabBar()
+                is_hovering = (index == getattr(tab_bar, 'hovered_tab', -1))
+                self.update_tab_button_state(index, is_hovering)
+
+
     
     def mark_tab_saved(self, index):
         if index >= 0:
             self.tab_modified[index] = False
-            self.update_tab_button(index)
-    
-    def update_tab_button(self, index):
-        button = self.tabs.tabBar().tabButton(index, QTabBar.ButtonPosition.RightSide)
-        if button:
-            is_modified = self.tab_modified.get(index, False)
-            
-            if is_modified:
-                # Show dot when modified
-                button.setIcon(qta.icon("fa5s.circle", color="white"))
-                button.setIconSize(QSize(10, 10))
-                button.setVisible(True)
-            else:
-                # Hide when not modified and not hovering
-                button.setIcon(qta.icon("fa5s.x", color="white"))
-                button.setIconSize(QSize(10, 10))
-                button.setVisible(True)
-    
-    def update_tab_button_on_hover(self, index, is_hovering):
-        button = self.tabs.tabBar().tabButton(index, QTabBar.ButtonPosition.RightSide)
-        if button:
-            is_modified = self.tab_modified.get(index, False)
-            
-            if is_hovering:
-                # Show X on hover
-                button.setIcon(qta.icon("fa5s.xmark", color="white"))
-                button.setIconSize(QSize(10, 10))
-                button.setVisible(True)
-            else:
-                # Show dot if modified, hide if not
-                if is_modified:
-                    button.setIcon(qta.icon("fa5s.circle", color="white"))
-                    button.setIconSize(QSize(10, 10))
-                    button.setVisible(True)
-                else:
-                    button.setIcon(qta.icon("fa5s.x", color="white"))
-                    button.setIconSize(QSize(10, 10))
-                    button.setVisible(True)
-                    
+            # Update the button state
+            tab_bar = self.tabs.tabBar()
+            is_hovering = (index == getattr(tab_bar, 'hovered_tab', -1))
+            self.update_tab_button_state(index, is_hovering)
+
     
     def close_tab(self, index):
         if self.tabs.count() > 1:
             # Check if modified and prompt to save
             if self.tab_modified.get(index, False):
-                # Add save dialog here
-                pass
+                file_name = self.tabs.tabText(index)
+                reply = QMessageBox.question(
+                    self,
+                    "Unsaved Changes",
+                    f"Do you want to save changes to '{file_name}'?",
+                    QMessageBox.StandardButton.Save | 
+                    QMessageBox.StandardButton.Discard | 
+                    QMessageBox.StandardButton.Cancel
+                )
+                
+                if reply == QMessageBox.StandardButton.Save:
+                    # Save before closing
+                    old_index = self.tabs.currentIndex()
+                    self.tabs.setCurrentIndex(index)
+                    self.save_file()
+                    self.tabs.setCurrentIndex(old_index)
+                elif reply == QMessageBox.StandardButton.Cancel:
+                    return  # Don't close
             
             self.tabs.removeTab(index)
-            del self.tab_modified[index]
+            
+            # Rebuild dicts with updated indices
+            new_modified = {}
+            new_file_paths = {}
+            for i in range(self.tabs.count()):
+                old_index = i if i < index else i + 1
+                if old_index in self.tab_modified:
+                    new_modified[i] = self.tab_modified[old_index]
+                if old_index in self.tab_file_paths:
+                    new_file_paths[i] = self.tab_file_paths[old_index]
+            self.tab_modified = new_modified
+            self.tab_file_paths = new_file_paths
 
+            
+            
+            
+            
+    # File Functions
+    def open_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open File",
+            "",
+            "All Files (*);;Assembly Files (*.asm);;Binary Files (*.bin)"
+        )
+        
+        if file_path:
+            for i in range(self.tabs.count()):
+                if self.tab_file_paths.get(i) == file_path:
+                    self.tabs.setCurrentIndex(i)
+                    return
+                
+            try:
+                with open(file_path, 'r', encoding="utf-8") as f:
+                    content = f.read()
+                    
+                file_name = os.path.basename(file_path)
+                self.add_new_tab(file_name, file_path, content)
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not open file:\n{str(e)}")
+                
+                
+    def save_file(self):
+        index = self.tabs.currentIndex()
+        if index < 0:
+            return
+        
+        file_path = self.tab_file_paths.get(index)
+        
+        if not file_path:
+            self.save_file_as()
+            return
+        
+        editor = self.tabs.currentWidget()
+        if editor:
+            try:
+                with open(file_path, 'w', encoding="utf-8") as f:
+                    f.write(editor.toPlainText())
+                
+                self.mark_tab_saved(index) 
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not save file:\n{str(e)}")
+                
     
-    def run_code(self):
-        current_editor = self.tabs.currentWidget()
-        if current_editor:
-            code = current_editor.toPlainText()
-            print(f"Running code:\n{code}")
-            # Add your run logic here
+    def save_file_as(self):
+        index = self.tabs.currentIndex()
+        if index < 0:
+            return
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save File As",
+            "",
+            "All Files (*);;Assembly Files (*.asm);;Binary Files (*.bin)"
+        )
+        
+        if file_path:
+            editor = self.tabs.currentWidget()
+            if editor:
+                try:
+                    with open(file_path, 'w', encoding="utf-8") as f:
+                        f.write(editor.toPlainText())
+                    
+                    file_name = os.path.basename(file_path)
+                    self.tabs.setTabText(index, file_name)
+                    self.tab_file_paths[index] = file_path
+                    self.mark_tab_saved(index)
+                    
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Could not save file:\n{str(e)}")
+            
+            
+            
+    # Execution Functions
+    def assemble_code(self):
+        index = self.tabs.currentIndex()
+        if index < 0:
+            return
+        
+        file_path = self.tab_file_paths.get(index)
+        
+        if not file_path:
+            self.save_file_as()
+            return
+        
+        editor = self.tabs.currentWidget()
+        if editor:
+            try:
+                process = subprocess.Popen(
+                    "cmd.exe",
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    shell=False
+                )
+                
+                process.stdin.write("cd LC3Assembler\n")
+                process.stdin.write(f"py main.py {file_path}\n")
+                stdout_data, stderr_data = process.communicate()
+                process.stdin.close()
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not assemble file:\n{str(e)}")
+        
+        
+            
     
     def stop_code(self):
-        print("Stopping code execution")
-        # Add your stop logic here
+        pass
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
+    update_assembler()
     app.exec()
