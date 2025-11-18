@@ -490,7 +490,6 @@ class MainWindow(QMainWindow):
         close_btn.setFlat(True)
         close_btn.setVisible(False)
         
-        # Important: Use a lambda that captures the current index
         close_btn.clicked.connect(lambda checked=False, idx=index: self.close_tab(idx))
         
         close_btn.setStyleSheet("""
