@@ -30,6 +30,74 @@ def update_assembler():
     process.stdin.close()    # Close the terminal process.
 
 
+class DockButton(QPushButton):
+    def __init__(self, icon_string, original_color, hover_color):
+        super().__init__()
+        
+        # Variables
+        self.icon_string = icon_string
+        self.original_color = original_color
+        self.hover_color = hover_color
+        
+        self.setIcon(qta.icon(self.icon_string, color=self.original_color))
+        
+        # Create bounce animation sequence
+        self.bounce_group = QSequentialAnimationGroup()
+        
+        # Expand animation
+        self.expand_anim = QVariantAnimation()
+        self.expand_anim.setDuration(120)
+        self.expand_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.expand_anim.valueChanged.connect(self.update_icon_size)
+        
+        # Contract animation
+        self.contract_anim = QVariantAnimation()
+        self.contract_anim.setDuration(120)
+        self.contract_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+        self.contract_anim.valueChanged.connect(self.update_icon_size)
+        
+        self.bounce_group.addAnimation(self.expand_anim)
+        self.bounce_group.addAnimation(self.contract_anim)
+        
+        
+    def event(self, event):
+        if event.type() == QEvent.HoverEnter:
+            self.enterDockIcon()
+        if event.type() == QEvent.HoverLeave:
+            self.leaveDockIcon()
+            
+        return super().event(event)
+    
+    def update_icon_size(self, value):
+        self.setIconSize(value)
+    
+    def enterDockIcon(self):
+        self.setIcon(qta.icon(self.icon_string, color=self.hover_color))
+        self.bounce_group.stop()
+        
+        current_size = self.iconSize()
+        
+        # Expand to bigger size
+        self.expand_anim.setStartValue(current_size)
+        self.expand_anim.setEndValue(QSize(22, 22))
+        
+        # Contract back to normal hover size
+        self.contract_anim.setStartValue(QSize(24, 24))
+        self.contract_anim.setEndValue(QSize(20, 20))
+        
+        self.bounce_group.start()
+    
+    def leaveDockIcon(self):
+        self.setIcon(qta.icon(self.icon_string, color=self.original_color))
+        self.bounce_group.stop()
+        
+        # Simple shrink back
+        self.expand_anim.setStartValue(self.iconSize())
+        self.expand_anim.setEndValue(QSize(20, 20))
+        self.expand_anim.start()
+
+
+
 class LineNumberArea(QWidget):
     """
     Custom widget that inherits from QWidget for displaying line numbers in the CodeEditor class.
@@ -145,12 +213,19 @@ class CodeEditor(QPlainTextEdit):
 
 
 class CustomTabBar(QTabBar):
+    """
+    Extension of the QTabBar class to implement the special hovering functions.
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMouseTracking(True)
         self.hovered_tab = -1
     
+    
     def mouseMoveEvent(self, event):
+        # This code happens before the code of the inherited mouseMoveEvent()
+        
+        # Find the tab the user is hovering at and store that in self.hovered_tab if it isn't the current one.
         new_hovered = self.tabAt(event.pos())
         if new_hovered != self.hovered_tab:
             old_hovered = self.hovered_tab
@@ -160,32 +235,41 @@ class CustomTabBar(QTabBar):
             main_window = self.window()
             if hasattr(main_window, 'update_tab_button_state'):
                 if old_hovered >= 0:
+                    # Set the previously hovered tab to not hover.
                     main_window.update_tab_button_state(old_hovered, False)
                 if new_hovered >= 0:
+                    # Set the newly hovering tab to hovered.
                     main_window.update_tab_button_state(new_hovered, True)
+        # Execute code from inherited mouseMoveEvent().
         super().mouseMoveEvent(event)
     
     def leaveEvent(self, event):
+        # Removes hovering effect when the mouse leaves the tab bar.
         if self.hovered_tab >= 0:
             old_hovered = self.hovered_tab
-            self.hovered_tab = -1
+            self.hovered_tab = -1    # Reset to none.
             main_window = self.window()
+            # Set the tab to not hovered.
             if hasattr(main_window, 'update_tab_button_state'):
                 main_window.update_tab_button_state(old_hovered, False)
         super().leaveEvent(event)
 
 
 class MainWindow(QMainWindow):
+    """
+    Main Window of the IDE.
+    """
     def __init__(self):
         super().__init__()
         
+        # Styling and Sizing        
         self.setWindowTitle("LC3IDE")
         self.setMinimumSize(QSize(1200, 780))
         self.setStyleSheet("background-color: #0e0e0e")
         
         # Variables
-        self.tab_modified = {}
-        self.tab_file_paths = {}
+        self.tab_modified = {}    # Holds unsaved tabs.
+        self.tab_file_paths = {}    # Holds the file paths of the files in the tabs.
         
         # Keyboard Shortcuts
         save_shortcut = QAction("Save", self)
@@ -203,12 +287,17 @@ class MainWindow(QMainWindow):
         open_shortcut.triggered.connect(self.open_file)
         self.addAction(open_shortcut)
         
-        # Create tab widget with custom tab bar
-        self.tabs = QTabWidget()
-        custom_tab_bar = CustomTabBar(self.tabs)
-        self.tabs.setTabBar(custom_tab_bar)
-        self.tabs.setTabsClosable(False)  # We handle close buttons manually
+        #
+        # Tab Bar Code
+        #
         
+        # Create tab widget with custom tab bar
+        self.tabs = QTabWidget()    # The tabs widget will just be the default widget.
+        custom_tab_bar = CustomTabBar(self.tabs)
+        self.tabs.setTabBar(custom_tab_bar)    # But the bar will be replaced by the CustomTabBar.
+        self.tabs.setTabsClosable(False)  # Tab Closing is handled manually with close_tab()
+        
+        # Tab Styling
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
                 border: none;
@@ -229,13 +318,13 @@ class MainWindow(QMainWindow):
             }
         """)
 
-        # Create corner widget with buttons
+        # Create the widget that holds in the actions.
         corner_widget = QWidget()
         corner_layout = QHBoxLayout()
         corner_layout.setContentsMargins(4, 0, 4, 0)
         corner_layout.setSpacing(4)
 
-        # Add "+" button
+        # Add tab button
         self.add_tab_button = QPushButton()
         self.add_tab_button.setIcon(qta.icon("fa5s.plus", color="#858585"))
         self.add_tab_button.setIconSize(QSize(14, 14))
@@ -254,9 +343,9 @@ class MainWindow(QMainWindow):
         """)
         corner_layout.addWidget(self.add_tab_button)
 
-        # assemble button
+        # Assemble button
         self.assemble_button = QPushButton()
-        self.assemble_button.setIcon(qta.icon("fa5s.play", color="#80CBC4"))
+        self.assemble_button.setIcon(qta.icon("fa6s.gears", color="#858585"))
         self.assemble_button.setIconSize(QSize(14, 14))
         self.assemble_button.setFixedSize(QSize(28, 28))
         self.assemble_button.setFlat(True)
@@ -301,43 +390,52 @@ class MainWindow(QMainWindow):
         # Set tabs as central widget
         self.setCentralWidget(self.tabs)
 
-        # Add first tab
+        # Add empty tab
         self.add_new_tab("Untitled-1")
 
+        #
+        # Dock Code
+        #
         
-        # Create sidebar dock
-        self.files_button = QPushButton()
-        self.files_button.setIcon(qta.icon("fa6.folder", color="#858585"))
-        self.files_button.setIconSize(QSize(20, 20))
-        self.files_button.setFixedSize(QSize(40, 40))
-        self.files_button.setFlat(True)
-        self.files_button.clicked.connect(self.open_file)
-        self.files_button.enterEvent = self.enterDockIcon
-        self.files_button.leaveEvent = self.leaveDockIcon
-        self.files_button.setStyleSheet("""
+        # Open File Button
+        self.open_button = DockButton("fa6.folder", "#858585", "white")
+        self.open_button.setIconSize(QSize(20, 20))
+        self.open_button.setFixedSize(QSize(40, 40))
+        self.open_button.setFlat(True)
+        self.open_button.clicked.connect(self.open_file)
+        self.open_button.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
                 border: none;
             }
         """)
         
-        # Create bounce animation sequence
-        self.bounce_group = QSequentialAnimationGroup()
+        # Save File Button
+        self.save_button = DockButton("fa6.floppy-disk", "#858585", "white")
+        self.save_button.setIconSize(QSize(20, 20))
+        self.save_button.setFixedSize(QSize(40, 40))
+        self.save_button.setFlat(True)
+        self.save_button.clicked.connect(self.save_file)
+        self.save_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+            }
+        """)
         
-        # Expand animation
-        self.expand_anim = QVariantAnimation()
-        self.expand_anim.setDuration(120)
-        self.expand_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.expand_anim.valueChanged.connect(self.update_icon_size)
-        
-        # Contract animation
-        self.contract_anim = QVariantAnimation()
-        self.contract_anim.setDuration(120)
-        self.contract_anim.setEasingCurve(QEasingCurve.Type.InCubic)
-        self.contract_anim.valueChanged.connect(self.update_icon_size)
-        
-        self.bounce_group.addAnimation(self.expand_anim)
-        self.bounce_group.addAnimation(self.contract_anim)
+        # Save File As Button
+        self.save_as_button = DockButton("fa6.hard-drive", "#858585", "white")
+        self.save_as_button.setIconSize(QSize(20, 20))
+        self.save_as_button.setFixedSize(QSize(40, 40))
+        self.save_as_button.setFlat(True)
+        self.save_as_button.clicked.connect(self.save_file_as)
+        self.save_as_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+            
         
         # Dock Code
         dock = QDockWidget("Dock", self)
@@ -348,43 +446,17 @@ class MainWindow(QMainWindow):
         dock_content = QWidget()
         dock_content.setStyleSheet("background-color: #0e0e0e;")
         dock_layout = QVBoxLayout()
-        dock_layout.addWidget(self.files_button)
+        
+        # Add Dock Buttons
+        dock_layout.addWidget(self.open_button)
+        dock_layout.addWidget(self.save_button)
+        dock_layout.addWidget(self.save_as_button)
         dock_layout.addStretch()
         dock_content.setLayout(dock_layout)
         dock.setWidget(dock_content)
         
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)       
-        
-        
-    # Dock Functions
-    def update_icon_size(self, value):
-        self.files_button.setIconSize(value)
-    
-    def enterDockIcon(self, event):
-        self.files_button.setIcon(qta.icon("fa6.folder", color="white"))
-        self.bounce_group.stop()
-        
-        current_size = self.files_button.iconSize()
-        
-        # Expand to bigger size
-        self.expand_anim.setStartValue(current_size)
-        self.expand_anim.setEndValue(QSize(22, 22))
-        
-        # Contract back to normal hover size
-        self.contract_anim.setStartValue(QSize(24, 24))
-        self.contract_anim.setEndValue(QSize(20, 20))
-        
-        self.bounce_group.start()
-    
-    def leaveDockIcon(self, event):
-        self.files_button.setIcon(qta.icon("fa6.folder", color="#858585"))
-        self.bounce_group.stop()
-        
-        # Simple shrink back
-        self.expand_anim.setStartValue(self.files_button.iconSize())
-        self.expand_anim.setEndValue(QSize(20, 20))
-        self.expand_anim.start()
-        
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+               
         
     # Tab Bar Functions
     def add_new_tab(self, title="Untitled", file_path=None, content=""):
@@ -525,13 +597,14 @@ class MainWindow(QMainWindow):
             
             
     # File Functions
-    def open_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open File",
-            "",
-            "All Files (*);;Assembly Files (*.asm);;Binary Files (*.bin)"
-        )
+    def open_file(self, file_path=""):
+        if file_path == False:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Open File",
+                "",
+                "All Files (*);;Assembly Files (*.asm);;Binary Files (*.bin)"
+            )
         
         if file_path:
             for i in range(self.tabs.count()):
@@ -633,6 +706,7 @@ class MainWindow(QMainWindow):
                     process.stdin.write(f"python3 main.py {file_path}\n")
                 stdout_data, stderr_data = process.communicate()
                 process.stdin.close()
+                self.open_file(file_path[:-3] + "bin")
                 
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not assemble file:\n{str(e)}")
