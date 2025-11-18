@@ -9,8 +9,11 @@ from PySide6.QtGui import QColor, QPainter, QTextFormat, QAction
 
 
 def update_assembler():
-    assembler_path = os.path.join(os.getcwd(), 'LC3Assembler')
-    process = subprocess.Popen(
+    """
+    Clones or updates the LC3Assembler repository.
+    """
+    assembler_path = os.path.join(os.getcwd(), 'LC3Assembler')    # Get the path to the assembler subdirectory.
+    process = subprocess.Popen(    # Opens a persistent terminal to execute consecutive commands to clone/update repository.
             "cmd.exe",
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -19,87 +22,117 @@ def update_assembler():
             shell=False
         )
     if os.path.isdir(assembler_path):
-        process.stdin.write("cd LC3Assembler\n")
-        process.stdin.write("git pull\n")
-        stdout_data, stderr_data = process.communicate()
+        process.stdin.write("cd LC3Assembler\n")    # Navigate to the assembler directory if it exists.
+        process.stdin.write("git pull\n")    # Git Pull to update the local repository.
     else:
-        process.stdin.write("git clone https://github.com/DepthPixels/LC3Assembler.git\n")
-        stdout_data, stderr_data = process.communicate()
-        
-    process.stdin.close()
+        process.stdin.write("git clone https://github.com/DepthPixels/LC3Assembler.git\n")    # Clone the repository if it doesn't exist.
+    stdout_data, stderr_data = process.communicate()    # Wait for the terminal process to finish.
+    process.stdin.close()    # Close the terminal process.
 
 
 class LineNumberArea(QWidget):
-    def __init__(self, editor):
+    """
+    Custom widget that inherits from QWidget for displaying line numbers in the CodeEditor class.
+    """
+    def __init__(self, editor):    # Requires a parent CodeEditor
         super().__init__(editor)
         self.code_editor = editor
 
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """
+        Sets this Widget's Size by using the QWidget.sizeHint() method which takens in a QSize() object.
+        """
         return QSize(self.code_editor.line_number_area_width(), 0)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event) -> None:
+        """
+        QWidget.paintEvent() is called whenever the widget is drawn to the screen, tells it to use the line_number_area_paint_event() method in the parent CodeEditor.
+        """
         self.code_editor.line_number_area_paint_event(event)
 
 
 class CodeEditor(QPlainTextEdit):
+    """
+    Custom Extension of the QPlainTextEdit class to show line numbers and highlight lines if wanted.
+    """
     def __init__(self):
         super().__init__()
-        self.line_number_area = LineNumberArea(self)
+        self.line_number_area = LineNumberArea(self)    # Create a LineNumberArea Widget and assign this CodeEditor as parent.
         
-        self.blockCountChanged.connect(self.update_line_number_area_width)
-        self.updateRequest.connect(self.update_line_number_area)
-        self.cursorPositionChanged.connect(self.highlight_current_line)
+        # Signals
+        self.blockCountChanged.connect(self.update_line_number_area_width)    # QPlainTextEdit().blockCountChanged triggers when the number of lines (blocks) changes.
+        self.updateRequest.connect(self.update_line_number_area)    # QPlainTextEdit.updateRequest() is triggered when the text rect has to be redrawn, eg scrolling, connect it to other things that change along with this.
+        self.cursorPositionChanged.connect(self.highlight_current_line)    # Connect cursor position change to highlighting to remove previous line highlight and enable current.
         
+        # Initial Update
         self.update_line_number_area_width(0)
         self.highlight_current_line()
 
-    def line_number_area_width(self):
+    def line_number_area_width(self) -> int:
+        """
+        Calculates the required width for the line count.
+        """
         digits = len(str(max(1, self.blockCount())))
         space = 3 + self.fontMetrics().horizontalAdvance('9') * digits
         return space
 
-    def update_line_number_area_width(self, _):
+    def update_line_number_area_width(self, _) -> None:
+        """
+        Updates the Viewport width depending on the line number area width. Unused parameter is there since the QPlainTextEdit().blockCountChanged() sends the new block count.
+        """
         self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
 
-    def update_line_number_area(self, rect, dy):
+    def update_line_number_area(self, rect, dy) -> None:
+        """
+        Updates the Child Widget that displays the line numbers.
+        rect: Area redrawn, QRect()
+        dy: Number of pixels scrolled.
+        """
         if dy:
-            self.line_number_area.scroll(0, dy)
+            self.line_number_area.scroll(0, dy)    # If the viewport was scrolled, scroll LineNumberArea by the same number of pixels.
         else:
-            self.line_number_area.update(0, rect.y(), 
+            self.line_number_area.update(0, rect.y(),    # Otherwise just update the child LineNumberArea with the changed area QRect()'s properties.
                                         self.line_number_area.width(), rect.height())
-        if rect.contains(self.viewport().rect()):
+        if rect.contains(self.viewport().rect()):    # If the entire viewport changes then update the width of the LineNumberArea object.
             self.update_line_number_area_width(0)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)    # Inherit from the QPlainTextEdit resizeEvent() method.
         cr = self.contentsRect()
-        self.line_number_area.setGeometry(cr.left(), cr.top(), 
+        self.line_number_area.setGeometry(cr.left(), cr.top(),    # Set the size of the LineNumberArea to the new dimensions of the CodeEditor.
                                          self.line_number_area_width(), cr.height())
 
-    def line_number_area_paint_event(self, event):
-        painter = QPainter(self.line_number_area)
-        painter.fillRect(event.rect(), QColor(14, 14, 14))
+    def line_number_area_paint_event(self, event) -> None:
+        """
+        Paints the actual line numbers onto the window.
+        """
+        painter = QPainter(self.line_number_area)    # QPainter is a general purpose utility that allows us to draw stuff, here we're drawing onto the LineNumberArea.
+        painter.fillRect(event.rect(), QColor(14, 14, 14))   # Fill the updated rect (the LineNumberArea) with the background color in decimal.
 
-        block = self.firstVisibleBlock()
-        block_number = block.blockNumber()
-        top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
+        block = self.firstVisibleBlock()    # Returns the first visible block which is the the block at the top of the screen.
+        block_number = block.blockNumber()    # Finds the block number of the block at the top of the screen.
+        top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()    # Gets the bounding box of the block in block coordinates then translates it by the position of the CodeEditor in origin coordinates vertically to find the top of the line number area in origin coordinates.
         bottom = top + self.blockBoundingRect(block).height()
-
-        while block.isValid() and top <= event.rect().bottom():
-            if block.isVisible() and bottom >= event.rect().top():
+        
+        while block.isValid() and top <= event.rect().bottom():   # While the block exists and
+            if block.isVisible() and bottom >= event.rect().top():    # While the block is visible and
                 number = str(block_number + 1)
-                painter.setPen(QColor(133, 133, 133))
+                painter.setPen(QColor(133, 133, 133))    # Color of the line number
                 painter.drawText(0, int(top), self.line_number_area.width() - 3, 
-                               self.fontMetrics().height(), Qt.AlignmentFlag.AlignRight, number)
+                               self.fontMetrics().height(), Qt.AlignmentFlag.AlignRight, number)    # Draw a right-aligned line number, considering the 3px spacing.
 
+            # Go to the next block
             block = block.next()
             top = bottom
             bottom = top + self.blockBoundingRect(block).height()
             block_number += 1
 
-    def highlight_current_line(self):
+    def highlight_current_line(self) -> None:
+        """
+        Adds a highlight to the line the cursor is currently on.
+        """
         extra_selections = []
-        if not self.isReadOnly():
+        if not self.isReadOnly():    # Check if the content is read-only first.
             selection = QTextEdit.ExtraSelection()
             line_color = QColor(26, 26, 26)
             selection.format.setBackground(line_color)
@@ -107,7 +140,8 @@ class CodeEditor(QPlainTextEdit):
             selection.cursor = self.textCursor()
             selection.cursor.clearSelection()
             extra_selections.append(selection)
-        self.setExtraSelections(extra_selections)
+        self.setExtraSelections(extra_selections)    # This method allows us to set the color of extra selections separate from the cursor selection.
+
 
 
 class CustomTabBar(QTabBar):
