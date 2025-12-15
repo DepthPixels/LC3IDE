@@ -349,6 +349,8 @@ class CustomTabBar(QTabBar):
     def mouseReleaseEvent(self, event):
         if self.dragging and self.clicked_tab >= 0:
             new_location = self.tabAt(event.pos())
+            if new_location < 0:
+                new_location = self.count() - 1
             self.moveTab(self.clicked_tab, new_location)
             main_window: MainWindow = self.window()
             if hasattr(main_window, 'tab_modified'):
