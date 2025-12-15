@@ -8,7 +8,7 @@ def parse_lines(file_lines):
   extra = []
   
   for line in file_lines:
-    if line == "\n" or line == "\r\n" or line.strip().startswith(';'):
+    if line == "\n" or line == "\r\n" or line.strip().startswith(';') or line == "":
       parsed_data.append((None, None))
     else:
       parts = line.split(',')
@@ -50,10 +50,8 @@ def parse_lines(file_lines):
                 binary_value = format(ascii_value, '016b')
                 if i == 0:
                   parsed_data.append((opcode, [".STRINGZ", ".FILL", f"{binary_value}"]))
-                  print(f"Parsed Line: Opcode: {parsed_data[-1][0]}, Operands: {parsed_data[-1][1]}")
                 else:
                   parsed_data.append((".FILL", [f"{binary_value}"]))
-                  print(f"Parsed Line: Opcode: {parsed_data[-1][0]}, Operands: {parsed_data[-1][1]}")
                 
               parsed_data.append((".FILL", ['0x0000']))
             elif operands[0] == ".STRINGZP":
@@ -68,10 +66,8 @@ def parse_lines(file_lines):
                 binary_value = format(ascii_value2, '08b') + format(ascii_value, '08b')
                 if i == 0:
                   parsed_data.append((opcode, [".STRINGZP", ".FILL", f"{binary_value}"]))
-                  print(f"Parsed Line: Opcode: {parsed_data[-1][0]}, Operands: {parsed_data[-1][1]}")
                 else:
                   parsed_data.append((".FILL", [f"{binary_value}"]))
-                  print(f"Parsed Line: Opcode: {parsed_data[-1][0]}, Operands: {parsed_data[-1][1]}")
               parsed_data.append((".FILL", ['0x0000']))
           continue
       
@@ -87,10 +83,8 @@ def parse_lines(file_lines):
               binary_value = format(ascii_value, '016b')
               if i == 0:
                 parsed_data.append((".STRINGZ", [".FILL", f"{binary_value}"]))
-                print(f"Parsed Line: Opcode: {parsed_data[-1][0]}, Operands: {parsed_data[-1][1]}")
               else:
                 parsed_data.append((".FILL", [f"{binary_value}"]))
-                print(f"Parsed Line: Opcode: {parsed_data[-1][0]}, Operands: {parsed_data[-1][1]}")
               
             parsed_data.append((".FILL", ['0x0000']))
           elif opcode == ".STRINGZP":
@@ -105,16 +99,12 @@ def parse_lines(file_lines):
               binary_value = format(ascii_value2, '08b') + format(ascii_value, '08b')
               if i == 0:
                 parsed_data.append((".STRINGZP", [".FILL", f"{binary_value}"]))
-                print(f"Parsed Line: Opcode: {parsed_data[-1][0]}, Operands: {parsed_data[-1][1]}")
               else:
                 parsed_data.append((".FILL", [f"{binary_value}"]))
-                print(f"Parsed Line: Opcode: {parsed_data[-1][0]}, Operands: {parsed_data[-1][1]}")
             parsed_data.append((".FILL", ['0x0000']))
         continue        
             
       parsed_data.append((opcode, operands))
-      
-      print(f"Parsed Line: Opcode: {opcode}, Operands: {operands}")
       
       
   return parsed_data
@@ -155,6 +145,7 @@ directives = [".ORIG", ".FILL", ".STRINGZ", ".STRINGZP"]
 
 # Parse Labels for the Overlay
 def initial_parse(content, label_dict):
+    label_dict.clear()
     parsed_lines = parse_lines(content)
     label_parse([opcode for opcode, _ in parsed_lines], [operands for _, operands in parsed_lines], label_dict)
 

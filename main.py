@@ -141,19 +141,11 @@ class CodeEditor(QPlainTextEdit):
         
         # Overlay
         self.overlay = QWidget(self)    # Container For the Labels Overlay
-        self.overlay.setStyleSheet("""
-            QWidget {
-                background-color: rgba(30, 30, 30, 100);
-                color: #d4d4d4;
-                padding: 8px;
-                border-radius: 4px;
-            }
-        """)
         
         self.overlay_title = QLabel("Labels!")
         
         self.overlay_layout = QVBoxLayout()    # Layout for the Labels Overlay
-        self.overlay_layout.addWidget(self.overlay_title)
+        self.overlay_layout.addWidget(self.overlay_title, alignment=Qt.AlignmentFlag.AlignHCenter)
         
         self.overlay.setLayout(self.overlay_layout)
         
@@ -168,8 +160,33 @@ class CodeEditor(QPlainTextEdit):
     def hide_overlay(self):
         self.overlay.hide()
         
+    def reset_overlay(self):
+        self.overlay.hide()
+        
+        # Clear Layout
+        if self.overlay_layout is not None:
+            while self.overlay_layout.count():
+                item = self.overlay_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater() # Marks the widget for deletion
+        
+        print(self.overlay_layout.count())
+        
+        self.overlay_title = QLabel("Labels!")
+        
+        self.overlay_layout.addWidget(self.overlay_title, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.overlay.adjustSize()
+        
+        
     def add_label(self, label):
-        self.overlay_layout.addWidget(label)
+        label.clicked.connect(self.handle_label_click())
+        self.overlay_layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.overlay.adjustSize()
+        
+    def handle_label_click(self):
+        sender = self.sender()
+        label, address = sender.text().split(":").strip()
         
         
     # Line Number Functions
@@ -561,7 +578,7 @@ class MainWindow(QMainWindow):
             if file_path[-3:] == "asm":
                 initial_parse(content, self.label_dict)
                 for label, address in self.label_dict.items():
-                    editor.add_label(QLabel(f"{label}: {address}"))
+                    editor.add_label(QPushButton(f"{label}: {address}"))
                 # Show the label jump overlay.
                 editor.show_overlay()
         else:
@@ -711,7 +728,20 @@ class MainWindow(QMainWindow):
             try:
                 with open(file_path, 'w', encoding="utf-8") as f:
                     f.write(editor.toPlainText())
-                
+                    
+                # Update labels
+                file_path = self.tab_file_paths.get(index)
+                editor: CodeEditor = self.tabs.currentWidget()
+                content = editor.toPlainText().split('\n')
+                if content != [""]:
+                    if file_path[-3:] == "asm":
+                        editor.reset_overlay()
+                        initial_parse(content, self.label_dict)
+                        for label, address in self.label_dict.items():
+                            editor.add_label(QPushButton(f"{label}: {address}"))
+                        # Show the label jump overlay.
+                        print(self.label_dict)
+                        editor.show_overlay()
                 self.mark_tab_saved(index) 
                 
             except Exception as e:

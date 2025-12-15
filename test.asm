@@ -3,6 +3,8 @@
 ADD R1, R1, R2
 HALT
 
+HELLONELLOBELLO .FILL x8002
+
 YO .STRINGZ "I'm a label"
 
 .END
