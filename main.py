@@ -350,6 +350,19 @@ class CustomTabBar(QTabBar):
         if self.dragging and self.clicked_tab >= 0:
             new_location = self.tabAt(event.pos())
             self.moveTab(self.clicked_tab, new_location)
+            main_window: MainWindow = self.window()
+            if hasattr(main_window, 'tab_modified'):
+                temp = main_window.tab_modified[new_location]
+                main_window.tab_modified[new_location] = main_window.tab_modified[self.clicked_tab]
+                main_window.tab_modified[self.clicked_tab] = temp
+            if hasattr(main_window, 'tab_file_paths'):
+                temp = main_window.tab_file_paths[new_location]
+                main_window.tab_file_paths[new_location] = main_window.tab_file_paths[self.clicked_tab]
+                main_window.tab_file_paths[self.clicked_tab] = temp
+            if hasattr(main_window, 'update_tab_button_state'):
+                main_window.update_tab_button_state(self.clicked_tab, False)
+                main_window.update_tab_button_state(new_location, True)
+            
         
         super().mouseReleaseEvent(event)
 
