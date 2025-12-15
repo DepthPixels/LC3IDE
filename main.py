@@ -7,7 +7,7 @@ from PySide6.QtCore import QSize, Qt, QVariantAnimation, QEasingCurve, QSequenti
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QPushButton, QLabel,
                                QPlainTextEdit, QDockWidget, QVBoxLayout, QHBoxLayout,
                                QTabWidget, QTabBar, QTextEdit, QFileDialog, QMessageBox, QGridLayout)
-from PySide6.QtGui import QColor, QPainter, QTextFormat, QAction
+from PySide6.QtGui import QColor, QPainter, QTextFormat, QAction, QTextCursor
 
 
 def update_assembler():
@@ -171,22 +171,27 @@ class CodeEditor(QPlainTextEdit):
                 if widget is not None:
                     widget.deleteLater() # Marks the widget for deletion
         
-        print(self.overlay_layout.count())
-        
         self.overlay_title = QLabel("Labels!")
         
         self.overlay_layout.addWidget(self.overlay_title, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.overlay.adjustSize()
         
-        
-    def add_label(self, label):
-        label.clicked.connect(self.handle_label_click())
+    # Add a label
+    def add_label(self, label: QPushButton):
+        label.clicked.connect(self.handle_label_click)
         self.overlay_layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.overlay.adjustSize()
-        
+    
+    # Label jumping logic
     def handle_label_click(self):
         sender = self.sender()
-        label, address = sender.text().split(":").strip()
+        if sender:
+            # Get the address, it's in the button text
+            address = int(sender.text().split(":")[1].strip())
+            cursor = QTextCursor(self.document().findBlockByNumber(address-1))
+            # Make the cursor jump to this location
+            self.setTextCursor(cursor)
+            
         
         
     # Line Number Functions
