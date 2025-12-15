@@ -2,9 +2,9 @@ import sys, os, subprocess, platform
 import qtawesome as qta
 
 from PySide6.QtCore import QSize, Qt, QVariantAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent
-from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QPushButton, 
+from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QPushButton, QLabel,
                                QPlainTextEdit, QDockWidget, QVBoxLayout, QHBoxLayout,
-                               QTabWidget, QTabBar, QTextEdit, QFileDialog, QMessageBox)
+                               QTabWidget, QTabBar, QTextEdit, QFileDialog, QMessageBox, QGridLayout)
 from PySide6.QtGui import QColor, QPainter, QTextFormat, QAction
 
 
@@ -119,6 +119,7 @@ class LineNumberArea(QWidget):
         self.code_editor.line_number_area_paint_event(event)
 
 
+
 class CodeEditor(QPlainTextEdit):
     """
     Custom Extension of the QPlainTextEdit class to show line numbers and highlight lines if wanted.
@@ -135,7 +136,34 @@ class CodeEditor(QPlainTextEdit):
         # Initial Update
         self.update_line_number_area_width(0)
         self.highlight_current_line()
-
+        
+        # Overlay
+        self.overlay = QLabel("Labels!", self)
+        self.overlay.setStyleSheet("""
+            QLabel {
+                background-color: rgba(30, 30, 30, 200);
+                color: #d4d4d4;
+                padding: 8px;
+                border-radius: 4px;
+            }
+        """)
+        
+        self.overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.overlay.hide()
+        
+        
+    # Overlay Functions    
+    def show_overlay(self, text):
+        self.overlay.setText(text)
+        self.overlay.adjustSize()
+        self.overlay.move(self.width() - self.overlay.width() - 10, 10)
+        self.overlay.show()
+    
+    def hide_overlay(self):
+        self.overlay.hide()
+        
+        
+    # Line Number Functions
     def line_number_area_width(self) -> int:
         """
         Calculates the required width for the line count.
@@ -169,6 +197,15 @@ class CodeEditor(QPlainTextEdit):
         cr = self.contentsRect()
         self.line_number_area.setGeometry(cr.left(), cr.top(),    # Set the size of the LineNumberArea to the new dimensions of the CodeEditor.
                                          self.line_number_area_width(), cr.height())
+        
+        # Position overlay label
+        if self.overlay.isVisible():
+            self.overlay.adjustSize()
+            self.overlay.move(
+                self.width() - self.overlay.width() - 10,
+                10
+            )
+
 
     def line_number_area_paint_event(self, event) -> None:
         """
@@ -471,7 +508,7 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Set content if opening file
+        # Set content if opening file.
         if content:
             editor.setPlainText(content)
         
@@ -479,10 +516,10 @@ class MainWindow(QMainWindow):
         self.tab_modified[index] = False
         self.tab_file_paths[index] = file_path
         
-        # Connect text change AFTER adding tab
+        # Connect text change AFTER adding tab.
         editor.textChanged.connect(lambda: self.mark_tab_modified(self.tabs.indexOf(editor)))
         
-        # Create close/dot button
+        # Create close/dot button.
         close_btn = QPushButton()
         close_btn.setIcon(qta.icon("fa6s.circle", color="#d4d4d4"))
         close_btn.setIconSize(QSize(8, 8))
@@ -490,6 +527,7 @@ class MainWindow(QMainWindow):
         close_btn.setFlat(True)
         close_btn.setVisible(False)
         
+        # Call close_tab() when close button is clicked.
         close_btn.clicked.connect(lambda checked=False, idx=index: self.close_tab(idx))
         
         close_btn.setStyleSheet("""
@@ -503,48 +541,61 @@ class MainWindow(QMainWindow):
             }
         """)
         
+        # Add the close button to the tab.
         self.tabs.tabBar().setTabButton(index, QTabBar.ButtonPosition.RightSide, close_btn)
+        
+        # Show the label jump overlay.
+        editor.show_overlay("Labels!")
+        
         self.tabs.setCurrentWidget(editor)
+        
+        if content:
+            self.mark_tab_saved(index)
+        else:
+            self.mark_tab_modified(index)
     
     
-    
+    # Update the button to be a dot or a cross.
     def update_tab_button_state(self, index, is_hovering):
+        # Check is index is valid
         if index < 0 or index >= self.tabs.count():
             return
-            
+        
+        # Get the close button
         button = self.tabs.tabBar().tabButton(index, QTabBar.ButtonPosition.RightSide)
+        
+        # Check if it exists
         if not button:
             return
         
         is_modified = self.tab_modified.get(index, False)
         
         if is_hovering:
-            # Show X on hover
+            # Show x when hovering
             button.setIcon(qta.icon("fa6s.x", color="#858585"))
             button.setIconSize(QSize(10, 10))
             button.setVisible(True)
-        elif is_modified:
-            # Show white dot when modified
-            button.setIcon(qta.icon("fa6s.circle", color="#d4d4d4"))
-            button.setIconSize(QSize(8, 8))
-            button.setVisible(True)
         else:
-            # Hide when clean and not hovering
-            button.setVisible(False)
+            if is_modified:
+                # Show dot if modified
+                button.setIcon(qta.icon("fa6s.circle", color="#d4d4d4"))
+                button.setIconSize(QSize(8, 8))
+                button.setVisible(True)
+            else:
+                # Otherwise don't show it
+                button.setVisible(False)
 
-    
+    # Set the tab modification status.
     def mark_tab_modified(self, index):
         if index >= 0:
             old_state = self.tab_modified.get(index, False)
             self.tab_modified[index] = True
-            # Update button even if already modified (for first text change)
-            if not old_state:
-                tab_bar = self.tabs.tabBar()
-                is_hovering = (index == getattr(tab_bar, 'hovered_tab', -1))
-                self.update_tab_button_state(index, is_hovering)
+            tab_bar = self.tabs.tabBar()
+            is_hovering = (index == getattr(tab_bar, 'hovered_tab', -1))
+            self.update_tab_button_state(index, is_hovering)
 
 
-    
+    # Unmark it to be modified.
     def mark_tab_saved(self, index):
         if index >= 0:
             self.tab_modified[index] = False
@@ -553,7 +604,7 @@ class MainWindow(QMainWindow):
             is_hovering = (index == getattr(tab_bar, 'hovered_tab', -1))
             self.update_tab_button_state(index, is_hovering)
 
-    
+    # Close a tab.
     def close_tab(self, index):
         if self.tabs.count() > 1:
             # Check if modified and prompt to save
@@ -596,7 +647,10 @@ class MainWindow(QMainWindow):
             
             
     # File Functions
+    
+    # Open a File
     def open_file(self, file_path=""):
+        # No file path means request from button.
         if file_path == False:
             file_path, _ = QFileDialog.getOpenFileName(
                 self,
@@ -605,12 +659,15 @@ class MainWindow(QMainWindow):
                 "All Files (*);;Assembly Files (*.asm);;Binary Files (*.bin)"
             )
         
+        # If a valid path is now there (from params or dialog).
         if file_path:
+            # If the tab is already opened simply set it to focused.
             for i in range(self.tabs.count()):
                 if self.tab_file_paths.get(i) == file_path:
                     self.tabs.setCurrentIndex(i)
                     return
-                
+            
+            # Otherwise open the file and add a tab.
             try:
                 with open(file_path, 'r', encoding="utf-8") as f:
                     content = f.read()
@@ -621,14 +678,17 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not open file:\n{str(e)}")
                 
-                
+    
+    # Save a File
     def save_file(self):
         index = self.tabs.currentIndex()
         if index < 0:
             return
         
+        # Get File path to save to if its an existing file.
         file_path = self.tab_file_paths.get(index)
         
+        # If file doesn't already exist then use save_file_as() instead.
         if not file_path:
             self.save_file_as()
             return
@@ -645,6 +705,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Could not save file:\n{str(e)}")
                 
     
+    # Save a File with a dialog.
     def save_file_as(self):
         index = self.tabs.currentIndex()
         if index < 0:
@@ -675,6 +736,8 @@ class MainWindow(QMainWindow):
             
             
     # Execution Functions
+    
+    # Assemble the code using LC3Assembler.
     def assemble_code(self):
         index = self.tabs.currentIndex()
         if index < 0:
@@ -682,6 +745,7 @@ class MainWindow(QMainWindow):
         
         file_path = self.tab_file_paths.get(index)
         
+        # If file hasn't been saved yet then save it first.
         if not file_path:
             self.save_file_as()
             return
@@ -712,11 +776,11 @@ class MainWindow(QMainWindow):
         
         
             
-    
+    # Placeholder for the stop execution button.
     def stop_code(self):
         pass
 
-
+# Qt Stuff
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
