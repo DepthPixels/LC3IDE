@@ -1,7 +1,7 @@
 import sys, os, subprocess, platform
 import qtawesome as qta
 
-from util import parse_lines
+from util import parse_lines, initial_parse
 
 from PySide6.QtCore import QSize, Qt, QVariantAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QPushButton, QLabel,
@@ -316,6 +316,7 @@ class MainWindow(QMainWindow):
         # Variables
         self.tab_modified = {}    # Holds unsaved tabs.
         self.tab_file_paths = {}    # Holds the file paths of the files in the tabs.
+        self.label_dict = {}
         
         # Keyboard Shortcuts
         save_shortcut = QAction("Save", self)
@@ -558,7 +559,7 @@ class MainWindow(QMainWindow):
         if content:
             self.mark_tab_saved(index)
             if file_path[-3:] == "asm":
-                self.initial_parse(content)
+                initial_parse(content, self.label_dict)
                 for label, address in self.label_dict.items():
                     editor.add_label(QLabel(f"{label}: {address}"))
                 # Show the label jump overlay.
@@ -743,70 +744,9 @@ class MainWindow(QMainWindow):
                     self.mark_tab_saved(index)
                     
                 except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Could not save file:\n{str(e)}")
+                    QMessageBox.critical(self, "Error", f"Could not save file:\n{str(e)}")            
+                            
             
-        
-    
-    # Utility Functions and Data
-    
-    label_dict = {}
-    
-    # From LC3Assembler
-    opcode_dict = {
-        "ADD": "0001",
-        "AND": "0101",
-        "BR": "0000",
-        "JMP": "1100",
-        "JSR": "0100",
-        "JSRR": "0100",
-        "LD": "0010",
-        "LDI": "1010",
-        "LDR": "0110",
-        "LEA": "1110",
-        "NOT": "1001",
-        "RET": "1100",
-        "RTI": "1000",
-        "ST": "0011",
-        "STI": "1011",
-        "STR": "0111",
-        "TRAP": "1111",
-    }
-    
-    traps_shorthands = {
-        "GETC": "1111000000100000",
-        "OUT": "1111000000100001",
-        "PUTS": "1111000000100010",
-        "IN": "1111000000100011",
-        "PUTSP": "1111000000100100",
-        "HALT": "1111000000100101"
-    }
-    
-    directives = [".ORIG", ".FILL", ".STRINGZ", ".STRINGZP"]
-    
-    # Parse Labels for the Overlay
-    def initial_parse(self, content):
-        parsed_lines = parse_lines(content)
-        self.label_parse([opcode for opcode, _ in parsed_lines], [operands for _, operands in parsed_lines])
-
-
-    def label_parse(self, opcodes, operands):
-        if len(opcodes) > 1:
-            for i in range(len(opcodes)):
-                didnt_find_opcode = True
-                opcode = opcodes[i]
-                operand_index = 0
-                while didnt_find_opcode:
-                    if opcode not in self.opcode_dict and opcode[:2] != "BR" and opcode not in self.traps_shorthands and opcode not in self.directives and opcode != ".END":
-                        self.label_dict[opcode] = i
-                        if len(operands[i]) > operand_index+1:
-                            opcode = operands[i][operand_index]
-                            operand_index += 1
-                        else:
-                            break
-                    else:
-                        didnt_find_opcode = False
-                            
-                            
             
     # Execution Functions
     

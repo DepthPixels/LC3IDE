@@ -8,7 +8,9 @@ def parse_lines(file_lines):
   extra = []
   
   for line in file_lines:
-    if line != "\n" and line != "\r\n" and not line.strip().startswith(';'):
+    if line == "\n" or line == "\r\n" or line.strip().startswith(';'):
+      parsed_data.append((None, None))
+    else:
       parts = line.split(',')
       parts = [part.strip() for part in parts]
       
@@ -116,3 +118,62 @@ def parse_lines(file_lines):
       
       
   return parsed_data
+
+
+
+# From LC3Assembler
+opcode_dict = {
+    "ADD": "0001",
+    "AND": "0101",
+    "BR": "0000",
+    "JMP": "1100",
+    "JSR": "0100",
+    "JSRR": "0100",
+    "LD": "0010",
+    "LDI": "1010",
+    "LDR": "0110",
+    "LEA": "1110",
+    "NOT": "1001",
+    "RET": "1100",
+    "RTI": "1000",
+    "ST": "0011",
+    "STI": "1011",
+    "STR": "0111",
+    "TRAP": "1111",
+}
+
+traps_shorthands = {
+    "GETC": "1111000000100000",
+    "OUT": "1111000000100001",
+    "PUTS": "1111000000100010",
+    "IN": "1111000000100011",
+    "PUTSP": "1111000000100100",
+    "HALT": "1111000000100101"
+}
+
+directives = [".ORIG", ".FILL", ".STRINGZ", ".STRINGZP"]
+
+# Parse Labels for the Overlay
+def initial_parse(content, label_dict):
+    parsed_lines = parse_lines(content)
+    label_parse([opcode for opcode, _ in parsed_lines], [operands for _, operands in parsed_lines], label_dict)
+
+
+def label_parse(opcodes, operands, label_dict):
+    if len(opcodes) > 1:
+        for i in range(len(opcodes)):
+            didnt_find_opcode = True
+            opcode = opcodes[i]
+            operand_index = 0
+            if opcode == None:
+              continue
+            while didnt_find_opcode:
+                if opcode not in opcode_dict and opcode[:2] != "BR" and opcode not in traps_shorthands and opcode not in directives and opcode != ".END":
+                    label_dict[opcode] = i+1
+                    if len(operands[i]) > operand_index+1:
+                        opcode = operands[i][operand_index]
+                        operand_index += 1
+                    else:
+                        break
+                else:
+                    didnt_find_opcode = False
