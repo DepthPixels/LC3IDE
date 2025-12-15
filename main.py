@@ -6,7 +6,7 @@ from util import parse_lines, initial_parse
 from PySide6.QtCore import QSize, Qt, QVariantAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QPushButton, QLabel,
                                QPlainTextEdit, QDockWidget, QVBoxLayout, QHBoxLayout,
-                               QTabWidget, QTabBar, QTextEdit, QFileDialog, QMessageBox, QGridLayout)
+                               QTabWidget, QTabBar, QTextEdit, QFileDialog, QMessageBox, QStyle)
 from PySide6.QtGui import QColor, QPainter, QTextFormat, QAction, QTextCursor
 
 
@@ -141,6 +141,22 @@ class CodeEditor(QPlainTextEdit):
         
         # Overlay
         self.overlay = QWidget(self)    # Container For the Labels Overlay
+        self.overlay.setObjectName("OverlayContainer")
+        self.overlay.setStyleSheet("""
+            QWidget#OverlayContainer {
+                border: 3px solid #000000;
+                border-radius: 4px;
+            }
+            QPushButton, QLabel {
+                background-color: transparent;
+                border: none;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            QPushButton:hover {
+                background-color: #1a1a1a;
+            }
+        """)
         
         self.overlay_title = QLabel("Labels!")
         
@@ -340,6 +356,8 @@ class MainWindow(QMainWindow):
         self.tab_file_paths = {}    # Holds the file paths of the files in the tabs.
         self.label_dict = {}
         
+        self.font_size = 14
+        
         # Keyboard Shortcuts
         save_shortcut = QAction("Save", self)
         save_shortcut.setShortcut("Ctrl+S")
@@ -369,8 +387,9 @@ class MainWindow(QMainWindow):
         # Tab Styling
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
-                border: none;
+                border-top: 3px solid #000000;
                 background-color: #0e0e0e;
+                padding: 5px;
             }
             QTabBar::tab {
                 background-color: #0e0e0e;
@@ -380,7 +399,7 @@ class MainWindow(QMainWindow):
             }
             QTabBar::tab:selected {
                 color: #d4d4d4;
-                border-bottom: 2px solid #80CBC4;
+                border-bottom: 3px solid #80CBC4;
             }
             QTabBar::tab:hover {
                 background-color: #1a1a1a;
@@ -508,6 +527,7 @@ class MainWindow(QMainWindow):
         
         # Dock Code
         dock = QDockWidget("Dock", self)
+        dock.setStyleSheet("border-right: 3px solid #000000")
         dock.setTitleBarWidget(QWidget())
         dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | 
                             Qt.DockWidgetArea.RightDockWidgetArea)
@@ -525,6 +545,17 @@ class MainWindow(QMainWindow):
         dock.setWidget(dock_content)
         
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        
+        # More Shortcuts
+        zoom_in_shortcut = QAction("Zoom In", self)
+        zoom_in_shortcut.setShortcut("Ctrl+=")
+        zoom_in_shortcut.triggered.connect(self.zoom_in)
+        self.addAction(zoom_in_shortcut)
+        
+        zoom_out_shortcut = QAction("Zoom Out", self)
+        zoom_out_shortcut.setShortcut("Ctrl+-")
+        zoom_out_shortcut.triggered.connect(self.zoom_out)
+        self.addAction(zoom_out_shortcut)
                
         
     # Tab Bar Functions
@@ -539,6 +570,7 @@ class MainWindow(QMainWindow):
                 selection-background-color: #264f78;
             }
         """)
+        editor.setStyleSheet(f"font-size: {self.font_size}px")
         
         # Set content if opening file.
         if content:
@@ -678,7 +710,16 @@ class MainWindow(QMainWindow):
             self.tab_file_paths = new_file_paths
 
             
-            
+    # Editor Functions
+    def zoom_in(self):
+        editor: CodeEditor = self.tabs.currentWidget()
+        self.font_size += 1
+        editor.setStyleSheet(f"font-size: {self.font_size}px")
+    
+    def zoom_out(self):
+        editor: CodeEditor = self.tabs.currentWidget()
+        self.font_size -= 1
+        editor.setStyleSheet(f"font-size: {self.font_size}px")
             
             
     # File Functions
