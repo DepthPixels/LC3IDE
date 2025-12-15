@@ -304,6 +304,8 @@ class CustomTabBar(QTabBar):
         super().__init__(parent)
         self.setMouseTracking(True)
         self.hovered_tab = -1
+        self.dragging = False
+        self.clicked_tab = -1
     
     
     def mouseMoveEvent(self, event):
@@ -337,6 +339,19 @@ class CustomTabBar(QTabBar):
             if hasattr(main_window, 'update_tab_button_state'):
                 main_window.update_tab_button_state(old_hovered, False)
         super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        self.clicked_tab = self.tabAt(event.pos())
+        self.dragging = True
+        
+        super().mousePressEvent(event)
+    
+    def mouseReleaseEvent(self, event):
+        if self.dragging and self.clicked_tab >= 0:
+            new_location = self.tabAt(event.pos())
+            self.moveTab(self.clicked_tab, new_location)
+        
+        super().mouseReleaseEvent(event)
 
 
 class MainWindow(QMainWindow):
