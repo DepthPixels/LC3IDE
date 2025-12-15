@@ -3,4 +3,6 @@
 ADD R1, R1, R2
 HALT
 
+YO .STRINGZ "I'm a label"
+
 .END

@@ -1,6 +1,8 @@
 import sys, os, subprocess, platform
 import qtawesome as qta
 
+from util import parse_lines
+
 from PySide6.QtCore import QSize, Qt, QVariantAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QPushButton, QLabel,
                                QPlainTextEdit, QDockWidget, QVBoxLayout, QHBoxLayout,
@@ -138,29 +140,36 @@ class CodeEditor(QPlainTextEdit):
         self.highlight_current_line()
         
         # Overlay
-        self.overlay = QLabel("Labels!", self)
+        self.overlay = QWidget(self)    # Container For the Labels Overlay
         self.overlay.setStyleSheet("""
-            QLabel {
-                background-color: rgba(30, 30, 30, 200);
+            QWidget {
+                background-color: rgba(30, 30, 30, 100);
                 color: #d4d4d4;
                 padding: 8px;
                 border-radius: 4px;
             }
         """)
         
-        self.overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.overlay_title = QLabel("Labels!")
+        
+        self.overlay_layout = QVBoxLayout()    # Layout for the Labels Overlay
+        self.overlay_layout.addWidget(self.overlay_title)
+        
+        self.overlay.setLayout(self.overlay_layout)
+        
         self.overlay.hide()
         
         
     # Overlay Functions    
-    def show_overlay(self, text):
-        self.overlay.setText(text)
-        self.overlay.adjustSize()
+    def show_overlay(self):
         self.overlay.move(self.width() - self.overlay.width() - 10, 10)
         self.overlay.show()
     
     def hide_overlay(self):
         self.overlay.hide()
+        
+    def add_label(self, label):
+        self.overlay_layout.addWidget(label)
         
         
     # Line Number Functions
@@ -510,7 +519,7 @@ class MainWindow(QMainWindow):
         
         # Set content if opening file.
         if content:
-            editor.setPlainText(content)
+            editor.setPlainText("".join(content))
         
         index = self.tabs.addTab(editor, title)
         self.tab_modified[index] = False
@@ -544,13 +553,16 @@ class MainWindow(QMainWindow):
         # Add the close button to the tab.
         self.tabs.tabBar().setTabButton(index, QTabBar.ButtonPosition.RightSide, close_btn)
         
-        # Show the label jump overlay.
-        editor.show_overlay("Labels!")
-        
         self.tabs.setCurrentWidget(editor)
         
         if content:
             self.mark_tab_saved(index)
+            if file_path[-3:] == "asm":
+                self.initial_parse(content)
+                for label, address in self.label_dict.items():
+                    editor.add_label(QLabel(f"{label}: {address}"))
+                # Show the label jump overlay.
+                editor.show_overlay()
         else:
             self.mark_tab_modified(index)
     
@@ -670,7 +682,7 @@ class MainWindow(QMainWindow):
             # Otherwise open the file and add a tab.
             try:
                 with open(file_path, 'r', encoding="utf-8") as f:
-                    content = f.read()
+                    content = f.readlines()
                     
                 file_name = os.path.basename(file_path)
                 self.add_new_tab(file_name, file_path, content)
@@ -733,7 +745,68 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Could not save file:\n{str(e)}")
             
-            
+        
+    
+    # Utility Functions and Data
+    
+    label_dict = {}
+    
+    # From LC3Assembler
+    opcode_dict = {
+        "ADD": "0001",
+        "AND": "0101",
+        "BR": "0000",
+        "JMP": "1100",
+        "JSR": "0100",
+        "JSRR": "0100",
+        "LD": "0010",
+        "LDI": "1010",
+        "LDR": "0110",
+        "LEA": "1110",
+        "NOT": "1001",
+        "RET": "1100",
+        "RTI": "1000",
+        "ST": "0011",
+        "STI": "1011",
+        "STR": "0111",
+        "TRAP": "1111",
+    }
+    
+    traps_shorthands = {
+        "GETC": "1111000000100000",
+        "OUT": "1111000000100001",
+        "PUTS": "1111000000100010",
+        "IN": "1111000000100011",
+        "PUTSP": "1111000000100100",
+        "HALT": "1111000000100101"
+    }
+    
+    directives = [".ORIG", ".FILL", ".STRINGZ", ".STRINGZP"]
+    
+    # Parse Labels for the Overlay
+    def initial_parse(self, content):
+        parsed_lines = parse_lines(content)
+        self.label_parse([opcode for opcode, _ in parsed_lines], [operands for _, operands in parsed_lines])
+
+
+    def label_parse(self, opcodes, operands):
+        if len(opcodes) > 1:
+            for i in range(len(opcodes)):
+                didnt_find_opcode = True
+                opcode = opcodes[i]
+                operand_index = 0
+                while didnt_find_opcode:
+                    if opcode not in self.opcode_dict and opcode[:2] != "BR" and opcode not in self.traps_shorthands and opcode not in self.directives and opcode != ".END":
+                        self.label_dict[opcode] = i
+                        if len(operands[i]) > operand_index+1:
+                            opcode = operands[i][operand_index]
+                            operand_index += 1
+                        else:
+                            break
+                    else:
+                        didnt_find_opcode = False
+                            
+                            
             
     # Execution Functions
     
