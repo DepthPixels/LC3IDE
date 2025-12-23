@@ -16,7 +16,7 @@ def update_assembler():
     """
     assembler_path = os.path.join(os.getcwd(), 'LC3Assembler')    # Get the path to the assembler subdirectory.
     process = subprocess.Popen(    # Opens a persistent terminal to execute consecutive commands to clone/update repository.
-            "cmd.exe",
+            "cmd.exe" if platform.system() == "Windows" else "/bin/bash",
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -873,7 +873,7 @@ class MainWindow(QMainWindow):
         if editor:
             try:
                 process = subprocess.Popen(
-                    "cmd.exe",
+                    "cmd.exe" if platform.system() == "Windows" else "/bin/bash",
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -885,7 +885,7 @@ class MainWindow(QMainWindow):
                 if platform.system() == "Windows":
                     process.stdin.write(f"py main.py {file_path}\n")
                 else:
-                    process.stdin.write(f"python3 main.py {file_path}\n")
+                    process.stdin.write(f"python3 main.py {file_path}\n")   
                 stdout_data, stderr_data = process.communicate()
                 process.stdin.close()
                 self.open_file(file_path[:-3] + "bin")
